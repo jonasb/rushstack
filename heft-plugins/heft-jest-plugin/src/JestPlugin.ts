@@ -5,7 +5,12 @@
 import './jestWorkerPatch';
 
 import * as path from 'path';
-import { resolve as jestResolve, resolveWithPrefix as jestResolveWithPrefix } from 'jest-config/build/utils';
+import JestResolve, {
+  resolveRunner,
+  resolveSequencer,
+  resolveTestEnvironment,
+  resolveWatchPlugin
+} from 'jest-resolve';
 import { mergeWith, isObject } from 'lodash';
 import type {
   ICleanStageContext,
@@ -516,19 +521,33 @@ export class JestPlugin implements IHeftPlugin<IJestPluginOptions> {
           return path.join(PLUGIN_PACKAGE_FOLDER, restOfPath);
         }
 
-        return options.modulePrefix
-          ? jestResolveWithPrefix(/*resolver:*/ undefined, {
+        switch (options.modulePrefix) {
+          case 'jest-environment-':
+            return resolveTestEnvironment({ rootDir: configDir, testEnvironment: propertyValue });
+          case 'jest-runner-':
+            return resolveRunner(/*resolver:*/ undefined, { rootDir: configDir, filePath: propertyValue });
+          case 'jest-sequencer-':
+            return resolveSequencer(/*resolver:*/ undefined, { rootDir: configDir, filePath: propertyValue });
+          case 'jest-watch-':
+            return resolveWatchPlugin(/*resolver:*/ undefined, {
               rootDir: configDir,
-              filePath: propertyValue,
-              prefix: options.modulePrefix,
-              humanOptionName: propertyName,
-              optionName: propertyName
-            })
-          : jestResolve(/*resolver:*/ undefined, {
-              rootDir: configDir,
-              filePath: propertyValue,
-              key: propertyName
+              filePath: propertyValue
             });
+          default:
+            if (options.modulePrefix) {
+              throw new Error(
+                `Invalid modulePrefix (${options.modulePrefix}), ` +
+                  'only jest-environment-, jest-runner-, jest-sequencer- and jest-watch- are supported'
+              );
+            }
+            const module: string | null = JestResolve.findNodeModule(propertyValue, { basedir: configDir });
+            if (!module) {
+              throw new Error(
+                `Module ${propertyValue} in the ${propertyName} option was not found. <rootDir> is: ${configDir}`
+              );
+            }
+            return module;
+        }
       },
       pathResolutionMethod: PathResolutionMethod.custom
     };
